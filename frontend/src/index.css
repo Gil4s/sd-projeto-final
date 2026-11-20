@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+  }
+}
+
+/* Native <dialog> modal best practices (top-layer, no body overflow locking) */
+dialog.app-dialog {
+  padding: 0;
+  border: none;
+  background: transparent;
+  max-width: min(94vw, 38rem);
+  width: 100%;
+  max-height: 90dvh;
+  margin: auto;
+  overflow: visible;
+}
+
+dialog.app-dialog[data-size="lg"] {
+  max-width: min(94vw, 48rem);
+}
+
+dialog.app-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+dialog.app-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.app-dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: rgb(15 23 42 / 0.55);
+  backdrop-filter: blur(3px);
+}
+
+/* Form validation only after user interaction (:user-invalid) */
+.field-input:is(:user-invalid, .user-invalid-fallback) {
+  border-color: #dc2626;
+  background-color: #fef2f2;
+}
+
+.field-error {
+  display: none;
+  color: #b91c1c;
+  font-size: 0.8125rem;
+  margin-top: 0.25rem;
+}
+
+.field-input:is(:user-invalid, .user-invalid-fallback) + .field-error {
+  display: block;
+}
+
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
