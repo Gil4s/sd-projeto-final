@@ -118,12 +118,12 @@ export function LandingView({ authError }: LandingViewProps) {
             </div>
 
             <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">
-              Gestão de projetos e tarefas em arquitetura distribuída na AWS.
+              Quadro Kanban de tarefas em arquitetura distribuída na AWS.
             </h1>
 
             <p className="mt-4 max-w-2xl text-base leading-relaxed text-slate-600 sm:text-lg">
-              Organize projetos, acompanhe tarefas em Kanban ou lista e anexe arquivos em um bucket
-              S3 privado — com autenticação via Amazon Cognito e isolamento de dados por usuário.
+              Crie, edite e mova tarefas entre colunas com persistência no Amazon DynamoDB — com
+              login via Amazon Cognito e API REST protegida por token JWT.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -168,7 +168,7 @@ export function LandingView({ authError }: LandingViewProps) {
                 <Database className="h-5 w-5 text-amber-600" />
                 <h2 className="mt-2.5 text-sm font-bold text-slate-900">3. Dados</h2>
                 <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                  DynamoDB particionado por usuário + S3 privado via URLs pré-assinadas.
+                  Amazon DynamoDB com partição isolada por usuário (PK = USER#sub).
                 </p>
               </div>
             </div>

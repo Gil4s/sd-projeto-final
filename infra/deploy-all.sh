@@ -2,11 +2,10 @@
 set -euo pipefail
 
 # ==============================================================================
-# Deploy Completo do Zero — TaskCloud (Projeto Final SD - UFERSA)
+# Deploy Completo — TaskCloud (Projeto Final SD - UFERSA)
 # Executar no AWS CloudShell (região us-east-1).
-# Cria/reaproveita: Route 53, ACM SSL, Cognito User Pool + Usuário + Client,
-# DynamoDB, S3 Privado + CORS, Lambda (LabRole), API Gateway HTTP + DNS custom,
-# e AWS Amplify Frontend + DNS raiz.
+# Cria/atualiza apenas os 7 serviços essenciais:
+#   Route 53, ACM SSL, Cognito, DynamoDB, Lambda, API Gateway HTTP e Amplify.
 # ==============================================================================
 
 REGION="${AWS_REGION:-us-east-1}"
@@ -24,7 +23,6 @@ DEMO_PASSWORD="${DEMO_PASSWORD:-Ufersa2026!}"
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/LabRole"
-BUCKET_NAME="sd-projeto-final-anexos-guilhermeag-${ACCOUNT_ID}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -74,7 +72,6 @@ if [[ -z "$COGNITO_DOMAIN_PREFIX" || "$COGNITO_DOMAIN_PREFIX" == "None" ]]; then
 fi
 COGNITO_DOMAIN="https://${COGNITO_DOMAIN_PREFIX}.auth.${REGION}.amazoncognito.com"
 
-# Garantir usuário pronto para login imediato na apresentação
 aws cognito-idp admin-create-user \
   --user-pool-id "$POOL_ID" \
   --username "$DEMO_EMAIL" \
@@ -137,7 +134,7 @@ if [[ "$CERT_STATUS" != "ISSUED" ]]; then
 fi
 echo "[3/9 OK] Certificado SSL emitido: ${CERT_ARN}"
 
-# 4. Garantir DynamoDB e S3 Privado
+# 4. Garantir DynamoDB e AWS Amplify App
 if ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$REGION" >/dev/null 2>&1; then
   echo "[DynamoDB] Criando tabela ${TABLE_NAME}..."
   aws dynamodb create-table \
@@ -149,15 +146,6 @@ if ! aws dynamodb describe-table --table-name "$TABLE_NAME" --region "$REGION" >
   aws dynamodb wait table-exists --table-name "$TABLE_NAME" --region "$REGION"
 fi
 
-if ! aws s3api head-bucket --bucket "$BUCKET_NAME" --region "$REGION" >/dev/null 2>&1; then
-  echo "[S3] Criando bucket privado ${BUCKET_NAME}..."
-  aws s3api create-bucket --bucket "$BUCKET_NAME" --region "$REGION" >/dev/null
-fi
-aws s3api put-public-access-block --bucket "$BUCKET_NAME" --region "$REGION" \
-  --public-access-block-configuration \
-  "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
-
-# 5. Garantir App no AWS Amplify (antes do Cognito para liberar URL preview no callback)
 AMP_APP_ID="$(aws amplify list-apps --region "$REGION" \
   --query "apps[?name=='${AMPLIFY_APP_NAME}'].appId | [0]" --output text)"
 if [[ -z "$AMP_APP_ID" || "$AMP_APP_ID" == "None" ]]; then
@@ -173,19 +161,9 @@ if ! aws amplify get-branch --app-id "$AMP_APP_ID" --branch-name main --region "
   aws amplify create-branch --app-id "$AMP_APP_ID" --branch-name main --region "$REGION" >/dev/null
 fi
 AMPLIFY_PREVIEW_URL="https://main.${AMP_APP_ID}.amplifyapp.com"
+echo "[4/9 OK] DynamoDB (${TABLE_NAME}) e Amplify App (${AMP_APP_ID}) prontos."
 
-aws s3api put-bucket-cors --bucket "$BUCKET_NAME" --region "$REGION" --cors-configuration "{
-  \"CORSRules\": [{
-    \"AllowedOrigins\": [\"https://${APP_DOMAIN}\", \"${AMPLIFY_PREVIEW_URL}\", \"http://localhost:5173\"],
-    \"AllowedMethods\": [\"GET\", \"PUT\", \"HEAD\"],
-    \"AllowedHeaders\": [\"*\"],
-    \"ExposeHeaders\": [\"ETag\"],
-    \"MaxAgeSeconds\": 3000
-  }]
-}"
-echo "[4/9 OK] DynamoDB, S3 privado + CORS e Amplify App (${AMP_APP_ID}) prontos."
-
-# 6. Criar/atualizar App Client Cognito (OAuth2 Authorization Code + PKCE)
+# 5. Criar/atualizar App Client Cognito (OAuth2 Authorization Code + PKCE)
 CLIENT_ID="$(aws cognito-idp list-user-pool-clients --user-pool-id "$POOL_ID" --max-results 60 --region "$REGION" \
   --query "UserPoolClients[?ClientName=='${CLIENT_NAME}'].ClientId | [0]" --output text)"
 
@@ -239,7 +217,7 @@ aws cognito-idp create-managed-login-branding \
   --region "$REGION" >/dev/null 2>&1 || true
 echo "[5/9 OK] Cognito App Client '${CLIENT_NAME}': ${CLIENT_ID}"
 
-# 7. Empacotar e publicar AWS Lambda (Node.js 20 + LabRole)
+# 6. Empacotar e publicar AWS Lambda (Node.js 20 + LabRole)
 BE_BUILD="${WORK_DIR}/backend"
 mkdir -p "$BE_BUILD"
 cp -r "${ROOT_DIR}/backend/src" "${ROOT_DIR}/backend/package.json" "${ROOT_DIR}/backend/package-lock.json" "$BE_BUILD/"
@@ -256,7 +234,7 @@ if aws lambda get-function --function-name "$LAMBDA_NAME" --region "$REGION" >/d
     --handler src/index.handler \
     --timeout 15 \
     --memory-size 256 \
-    --environment "Variables={TABLE_NAME=${TABLE_NAME},BUCKET_NAME=${BUCKET_NAME}}" \
+    --environment "Variables={TABLE_NAME=${TABLE_NAME}}" \
     --region "$REGION" >/dev/null
   aws lambda wait function-updated --function-name "$LAMBDA_NAME" --region "$REGION"
 else
@@ -267,7 +245,7 @@ else
     --handler src/index.handler \
     --timeout 15 \
     --memory-size 256 \
-    --environment "Variables={TABLE_NAME=${TABLE_NAME},BUCKET_NAME=${BUCKET_NAME}}" \
+    --environment "Variables={TABLE_NAME=${TABLE_NAME}}" \
     --zip-file "fileb://${BE_BUILD}/function.zip" \
     --region "$REGION" >/dev/null
   aws lambda wait function-active-v2 --function-name "$LAMBDA_NAME" --region "$REGION"
@@ -276,7 +254,7 @@ LAMBDA_ARN="$(aws lambda get-function --function-name "$LAMBDA_NAME" --region "$
   --query "Configuration.FunctionArn" --output text)"
 echo "[6/9 OK] Lambda publicada: ${LAMBDA_NAME}"
 
-# 8. Criar/reaproveitar HTTP API + Custom Domain + DNS ALIAS + Rotas REST + JWT Authorizer
+# 7. Criar/atualizar HTTP API + Custom Domain + DNS ALIAS + 7 Rotas REST + JWT Authorizer
 API_ID="$(aws apigatewayv2 get-api-mappings --domain-name "$API_DOMAIN" --region "$REGION" \
   --query "Items[0].ApiId" --output text 2>/dev/null || true)"
 STAGE_NAME="$(aws apigatewayv2 get-api-mappings --domain-name "$API_DOMAIN" --region "$REGION" \
@@ -383,21 +361,34 @@ upsert_route() {
   fi
 }
 
+delete_route_if_exists() {
+  local route_key="$1"
+  local existing_id
+  existing_id="$(aws apigatewayv2 get-routes --api-id "$API_ID" --region "$REGION" \
+    --query "Items[?RouteKey=='${route_key}'].RouteId | [0]" --output text)"
+  if [[ -n "$existing_id" && "$existing_id" != "None" ]]; then
+    aws apigatewayv2 delete-route --api-id "$API_ID" --route-id "$existing_id" --region "$REGION" >/dev/null
+  fi
+}
+
+# 7 rotas REST enxutas
 upsert_route "GET /health" "NONE"
 upsert_route "GET /me" "JWT"
-upsert_route "GET /projects" "JWT"
-upsert_route "POST /projects" "JWT"
-upsert_route "GET /projects/{projectId}" "JWT"
-upsert_route "PUT /projects/{projectId}" "JWT"
-upsert_route "DELETE /projects/{projectId}" "JWT"
 upsert_route "GET /tasks" "JWT"
 upsert_route "POST /tasks" "JWT"
 upsert_route "GET /tasks/{taskId}" "JWT"
 upsert_route "PUT /tasks/{taskId}" "JWT"
 upsert_route "DELETE /tasks/{taskId}" "JWT"
-upsert_route "POST /tasks/{taskId}/attachments/upload-url" "JWT"
-upsert_route "GET /tasks/{taskId}/attachments/{attachmentId}/download-url" "JWT"
-upsert_route "DELETE /tasks/{taskId}/attachments/{attachmentId}" "JWT"
+
+# Limpar rotas removidas (Projetos e Anexos S3) caso existam de versão anterior
+delete_route_if_exists "GET /projects"
+delete_route_if_exists "POST /projects"
+delete_route_if_exists "GET /projects/{projectId}"
+delete_route_if_exists "PUT /projects/{projectId}"
+delete_route_if_exists "DELETE /projects/{projectId}"
+delete_route_if_exists "POST /tasks/{taskId}/attachments/upload-url"
+delete_route_if_exists "GET /tasks/{taskId}/attachments/{attachmentId}/download-url"
+delete_route_if_exists "DELETE /tasks/{taskId}/attachments/{attachmentId}"
 
 # Custom Domain + API Mapping + Registro A ALIAS no Route 53
 if ! aws apigatewayv2 get-domain-name --domain-name "$API_DOMAIN" --region "$REGION" >/dev/null 2>&1; then
@@ -437,9 +428,9 @@ aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" --cha
     }
   }]
 }" >/dev/null
-echo "[7/9 OK] API Gateway HTTP + 15 rotas REST + DNS ${API_DOMAIN} configurados."
+echo "[7/9 OK] API Gateway HTTP + 7 rotas REST + DNS ${API_DOMAIN} configurados."
 
-# 9. Build e Deploy do Frontend no AWS Amplify + Domínio Raiz
+# 8. Build e Deploy do Frontend no AWS Amplify + Domínio Raiz
 FE_BUILD="${WORK_DIR}/frontend"
 cp -r "${ROOT_DIR}/frontend" "$FE_BUILD"
 cat > "${FE_BUILD}/.env.production" <<EOF

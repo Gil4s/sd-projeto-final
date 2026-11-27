@@ -1,38 +1,14 @@
 export type TaskStatus = 'todo' | 'doing' | 'done';
 export type TaskPriority = 'low' | 'medium' | 'high';
 
-export interface Project {
-  id: string;
-  ownerId: string;
-  name: string;
-  description: string;
-  color: string;
-  createdAt: string;
-  updatedAt: string;
-  taskCount?: number;
-  completedCount?: number;
-}
-
-export interface TaskAttachment {
-  id: string;
-  filename: string;
-  safeName: string;
-  contentType: string;
-  size: number;
-  s3Key: string;
-  uploadedAt: string;
-}
-
 export interface Task {
   id: string;
   ownerId: string;
-  projectId: string | null;
   title: string;
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
-  attachments: TaskAttachment[];
   createdAt: string;
   updatedAt: string;
 }
@@ -58,15 +34,14 @@ export interface MeResponse {
     exp: number | null;
   };
   stats: {
-    projects: number;
     tasks: number;
-    completedTasks: number;
-    attachments: number;
+    todo: number;
+    doing: number;
+    done: number;
   };
   architecture: {
     api: string;
     database: string;
-    storage: string;
     isolationKey: string;
   };
 }

@@ -49,7 +49,7 @@ export function ArchitectureModal({ open, onClose, session }: ArchitectureModalP
       open={open}
       onClose={onClose}
       title="Inspeção da Arquitetura — Sistemas Distribuídos"
-      subtitle="Painel de demonstração ao vivo dos requisitos (3 camadas, DNS, API REST, Cognito JWT e autorização)."
+      subtitle="Demonstração ao vivo das 3 camadas, DNS customizado, API REST, Cognito JWT e autorização."
       size="lg"
     >
       <div className="space-y-5">
@@ -82,7 +82,7 @@ export function ArchitectureModal({ open, onClose, session }: ArchitectureModalP
               <Database className="h-4 w-4" />
               3. Dados
             </div>
-            <p className="mt-1.5 text-sm font-semibold text-slate-900">DynamoDB + S3 Privado</p>
+            <p className="mt-1.5 text-sm font-semibold text-slate-900">Amazon DynamoDB</p>
             <p className="mt-1 font-mono text-[11px] text-slate-600">
               Partição isolada: USER#sub
             </p>
