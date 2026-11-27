@@ -296,8 +296,7 @@ if [[ -z "$API_ID" || "$API_ID" == "None" ]]; then
     --query "ApiId" --output text)"
 fi
 
-STAGE_NAME="${STAGE_NAME:-'$default'}"
-if [[ "$STAGE_NAME" == "None" || -z "$STAGE_NAME" || "$STAGE_NAME" == "'\$default'" ]]; then
+if [[ -z "${STAGE_NAME:-}" || "${STAGE_NAME:-}" == "None" ]]; then
   STAGE_NAME='$default'
 fi
 
