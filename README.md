@@ -25,17 +25,14 @@
 
 > A rota `GET /dados` da Avaliação 12 é mantida intacta na mesma HTTP API.
 
-## Provisionamento AWS (CloudShell)
+## Configuração na AWS (Console)
 
-No AWS CloudShell (`us-east-1`):
-
-```bash
-git clone https://github.com/Gil4s/sd-projeto-final.git
-cd sd-projeto-final
-bash infra/setup-aws.sh
-```
-
-O script cria/atualiza DynamoDB, S3 privado + CORS, App Client `app-projeto-final` no Cognito, Lambda (`LabRole`), JWT Authorizer + rotas REST + CORS no API Gateway e imprime as variáveis `VITE_*` para configurar no AWS Amplify.
+1. **DynamoDB:** criar tabela `sd-projeto-final-guilhermeag` com Partition Key `PK` (`String`) e Sort Key `SK` (`String`), modo *On-demand*.
+2. **S3:** criar bucket privado `sd-projeto-final-anexos-guilhermeag-737116127842` (*Block all public access* ligado) e configurar CORS para `https://guilhermeag.grupo-06.sd.ufersa.dev.br`.
+3. **Cognito:** no User Pool `pool-guilhermeag`, criar App Client público `app-projeto-final` (Authorization code grant, escopos `openid`, `email`, `profile`, callback/logout `https://guilhermeag.grupo-06.sd.ufersa.dev.br`).
+4. **Lambda:** criar função `sd-projeto-final-api` (Node.js 20, role `LabRole`, handler `src/index.handler`), enviar o `.zip` do `backend/` e definir `TABLE_NAME` e `BUCKET_NAME`.
+5. **API Gateway (HTTP API):** na API mapeada em `api.guilhermeag.grupo-06.sd.ufersa.dev.br`, configurar CORS, criar JWT Authorizer apontando para o Cognito e registrar as rotas REST (mantendo `GET /dados` intacta).
+6. **AWS Amplify:** conectar o repositório `Gil4s/sd-projeto-final`, configurar as variáveis `VITE_*` e vincular o domínio raiz `guilhermeag.grupo-06.sd.ufersa.dev.br`.
 
 ## Roteiro Rápido de Apresentação (27/11/2026)
 

@@ -103,9 +103,9 @@ export function LandingView({ authError }: LandingViewProps) {
 
         {!configured && (
           <div className="mb-8 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <strong>Configuração pendente:</strong> execute <code className="font-mono">bash infra/setup-aws.sh</code>{' '}
-            no AWS CloudShell e configure <code className="font-mono">VITE_COGNITO_DOMAIN</code> e{' '}
-            <code className="font-mono">VITE_COGNITO_CLIENT_ID</code>.
+            <strong>Configuração pendente:</strong> defina as variáveis de ambiente{' '}
+            <code className="font-mono">VITE_COGNITO_DOMAIN</code> e{' '}
+            <code className="font-mono">VITE_COGNITO_CLIENT_ID</code> no AWS Amplify.
           </div>
         )}
 
