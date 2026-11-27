@@ -71,3 +71,38 @@ dialog.app-dialog::backdrop {
   border: 0 !important;
   white-space: nowrap !important;
 }
+
+/* Kanban Drag & Drop (estilo Trello via Pointer Events) */
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+html.is-dragging-card,
+html.is-dragging-card * {
+  cursor: grabbing !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.kanban-card-dragging {
+  position: relative;
+  z-index: 40;
+  pointer-events: none;
+  border-color: #3b82f6;
+  opacity: 1;
+  box-shadow: 0 20px 35px -10px rgb(15 23 42 / 0.22), 0 8px 16px -6px rgb(37 99 235 / 0.18);
+  transform: scale(1.02);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kanban-card-dragging {
+    transform: none;
+  }
+}

@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   CheckCircle2,
   Circle,
   Clock,
   FolderKanban,
+  GripVertical,
   Layers,
   LayoutGrid,
   List,
@@ -88,6 +89,28 @@ export default function App() {
 
   const [archModalOpen, setArchModalOpen] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
+
+  const [dragState, setDragState] = useState<{
+    taskId: string;
+    taskTitle: string;
+    sourceStatus: TaskStatus;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    dx: number;
+    dy: number;
+    overStatus: TaskStatus | null;
+  } | null>(null);
+  const dragRef = useRef(dragState);
+  dragRef.current = dragState;
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+
+  const announce = useCallback((message: string) => {
+    setLiveAnnouncement('');
+    window.setTimeout(() => setLiveAnnouncement(message), 40);
+  }, []);
 
   const showToast = useCallback((text: string, kind: 'ok' | 'err' = 'ok') => {
     setToast({ text, kind });
@@ -239,18 +262,110 @@ export default function App() {
     return created;
   }
 
-  async function handleQuickStatusChange(task: Task, nextStatus: TaskStatus) {
-    if (!session || task.status === nextStatus) return;
-    const prevTasks = tasks;
-    setTasks((curr) => curr.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
-    try {
-      const updated = await apiClient.updateTask(session.idToken, task.id, { status: nextStatus });
-      setTasks((curr) => curr.map((t) => (t.id === updated.id ? updated : t)));
-    } catch (err) {
-      setTasks(prevTasks);
-      handleApiError(err, 'Não foi possível atualizar o status.');
+  const handleQuickStatusChange = useCallback(
+    async (task: Task, nextStatus: TaskStatus) => {
+      if (!session || task.status === nextStatus) return;
+      const colLabel =
+        STATUS_COLUMNS.find((c) => c.key === nextStatus)?.label || nextStatus;
+      const prevTasks = tasksRef.current;
+      setTasks((curr) => curr.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
+      announce(`Tarefa ${task.title} movida para ${colLabel}.`);
+      try {
+        const updated = await apiClient.updateTask(session.idToken, task.id, {
+          status: nextStatus,
+        });
+        setTasks((curr) => curr.map((t) => (t.id === updated.id ? updated : t)));
+        showToast(`"${task.title}" movida para ${colLabel}.`);
+      } catch (err) {
+        setTasks(prevTasks);
+        handleApiError(err, 'Não foi possível atualizar o status.');
+      }
+    },
+    [session, announce, showToast, handleApiError],
+  );
+
+  const finishDrag = useCallback((cancelReason?: string) => {
+    document.documentElement.classList.remove('is-dragging-card');
+    setDragState(null);
+    if (cancelReason) {
+      announce(cancelReason);
     }
+  }, [announce]);
+
+  function startCardDrag(e: React.PointerEvent<HTMLButtonElement>, task: Task) {
+    if (e.button !== 0 || dragRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    document.documentElement.classList.add('is-dragging-card');
+    setDragState({
+      taskId: task.id,
+      taskTitle: task.title,
+      sourceStatus: task.status,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      dx: 0,
+      dy: 0,
+      overStatus: task.status,
+    });
   }
+
+  useEffect(() => {
+    if (!dragState) return;
+
+    const findColumnAt = (x: number, y: number): TaskStatus | null => {
+      const el = document.elementFromPoint(x, y);
+      const col = el?.closest<HTMLElement>('[data-kanban-column]')?.dataset.kanbanColumn;
+      if (col === 'todo' || col === 'doing' || col === 'done') return col;
+      return null;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      const curr = dragRef.current;
+      if (!curr || e.pointerId !== curr.pointerId) return;
+      const dx = e.clientX - curr.startX;
+      const dy = e.clientY - curr.startY;
+      const overStatus = findColumnAt(e.clientX, e.clientY);
+      setDragState((prev) => (prev ? { ...prev, dx, dy, overStatus } : null));
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      const curr = dragRef.current;
+      if (!curr || e.pointerId !== curr.pointerId) return;
+      const targetStatus = findColumnAt(e.clientX, e.clientY) || curr.overStatus;
+      const draggedTask = tasksRef.current.find((t) => t.id === curr.taskId);
+      finishDrag();
+      if (draggedTask && targetStatus && targetStatus !== curr.sourceStatus) {
+        void handleQuickStatusChange(draggedTask, targetStatus);
+      }
+    };
+
+    const onPointerCancel = (e: PointerEvent) => {
+      const curr = dragRef.current;
+      if (!curr || e.pointerId !== curr.pointerId) return;
+      finishDrag('Movimentação cancelada.');
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragRef.current) {
+        e.preventDefault();
+        finishDrag('Movimentação cancelada.');
+      }
+    };
+
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+    document.addEventListener('pointercancel', onPointerCancel);
+    document.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+      document.removeEventListener('pointercancel', onPointerCancel);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [Boolean(dragState), finishDrag, handleQuickStatusChange]);
 
   async function handleDeleteTask(taskId: string) {
     if (!session) return;
@@ -624,10 +739,20 @@ export default function App() {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {STATUS_COLUMNS.map((col) => {
                 const colTasks = filteredTasks.filter((t) => t.status === col.key);
+                const isDropTarget =
+                  dragState !== null &&
+                  dragState.overStatus === col.key &&
+                  dragState.sourceStatus !== col.key;
+
                 return (
                   <section
                     key={col.key}
-                    className="flex flex-col rounded-2xl border border-slate-200 bg-slate-100/70 p-3"
+                    data-kanban-column={col.key}
+                    className={`flex min-h-48 flex-col rounded-2xl border p-3 transition-colors ${
+                      isDropTarget
+                        ? 'border-blue-400 bg-blue-50/70 ring-2 ring-blue-500/25'
+                        : 'border-slate-200 bg-slate-100/70'
+                    }`}
                   >
                     <div className="mb-3 flex items-center justify-between px-1">
                       <div className="flex items-center gap-2">
@@ -643,12 +768,44 @@ export default function App() {
                       {colTasks.map((task) => {
                         const proj = task.projectId ? projectMap.get(task.projectId) : null;
                         const dueFormatted = formatDateBr(task.dueDate);
+                        const isDragging = dragState?.taskId === task.id;
 
                         return (
                           <article
                             key={task.id}
-                            className="group rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition hover:border-blue-300 hover:shadow-sm"
+                            style={
+                              isDragging
+                                ? { translate: `${dragState.dx}px ${dragState.dy}px` }
+                                : undefined
+                            }
+                            className={`group rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xs transition-[border-color,box-shadow] hover:border-blue-300 hover:shadow-sm ${
+                              isDragging ? 'kanban-card-dragging' : ''
+                            }`}
                           >
+                            {/* Barra de arraste estilo Trello (alça dedicada com Pointer Events) */}
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                onPointerDown={(e) => startCardDrag(e, task)}
+                                onLostPointerCapture={() => {
+                                  if (dragRef.current?.taskId === task.id) {
+                                    finishDrag();
+                                  }
+                                }}
+                                aria-label={`Arrastar tarefa ${task.title} para outra coluna`}
+                                title="Arraste para mover de coluna (Esc cancela)"
+                                className="drag-handle -ml-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:bg-slate-100 focus-visible:text-slate-700"
+                              >
+                                <GripVertical className="h-3.5 w-3.5" />
+                                <span>Arrastar</span>
+                              </button>
+                              <span
+                                className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${PRIORITY_META[task.priority].badgeClass}`}
+                              >
+                                {PRIORITY_META[task.priority].label}
+                              </span>
+                            </div>
+
                             <button
                               type="button"
                               onClick={() => {
@@ -657,16 +814,9 @@ export default function App() {
                               }}
                               className="w-full text-left"
                             >
-                              <div className="flex items-start justify-between gap-2">
-                                <h3 className="text-sm font-semibold text-slate-900 group-hover:text-blue-700">
-                                  {task.title}
-                                </h3>
-                                <span
-                                  className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ${PRIORITY_META[task.priority].badgeClass}`}
-                                >
-                                  {PRIORITY_META[task.priority].label}
-                                </span>
-                              </div>
+                              <h3 className="text-sm font-semibold text-slate-900 group-hover:text-blue-700">
+                                {task.title}
+                              </h3>
 
                               {task.description && (
                                 <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-slate-600">
@@ -699,7 +849,7 @@ export default function App() {
                               </div>
                             </button>
 
-                            {/* Ações rápidas de troca de status */}
+                            {/* Ações rápidas de troca de status (acessível por teclado e 1 clique) */}
                             <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-slate-100 pt-2.5 text-[11px]">
                               {task.status !== 'todo' && (
                                 <button
@@ -733,9 +883,15 @@ export default function App() {
                         );
                       })}
 
-                      {colTasks.length === 0 && (
+                      {isDropTarget && (
+                        <div className="rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/80 px-3 py-5 text-center text-xs font-semibold text-blue-700">
+                          Soltar em &ldquo;{col.label}&rdquo;
+                        </div>
+                      )}
+
+                      {colTasks.length === 0 && !isDropTarget && (
                         <div className="rounded-xl border border-dashed border-slate-300/80 px-3 py-8 text-center text-xs text-slate-400">
-                          Nenhuma tarefa aqui
+                          Arraste um card para cá ou crie uma tarefa
                         </div>
                       )}
                     </div>
@@ -884,6 +1040,11 @@ export default function App() {
         onClose={() => setArchModalOpen(false)}
         session={session}
       />
+
+      {/* Região viva acessível para anúncios de movimentação */}
+      <div aria-live="polite" className="visually-hidden">
+        {liveAnnouncement}
+      </div>
 
       {/* Toast de feedback */}
       {toast && (
